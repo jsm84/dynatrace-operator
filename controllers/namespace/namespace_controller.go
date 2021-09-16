@@ -152,6 +152,7 @@ type script struct {
 	TrustedCAs []byte
 	ClusterID  string
 	IMNodes    map[string]string
+	// TODO
 }
 
 func (r *ReconcileNamespaces) ensureSecretDeleted(name string, ns string) error {
