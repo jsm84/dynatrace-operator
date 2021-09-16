@@ -1016,6 +1016,8 @@ func buildResultPod(_ *testing.T) corev1.Pod {
 					{Name: "FAILURE_POLICY", Value: "silent"},
 					{Name: "CONTAINERS_COUNT", Value: "1"},
 					{Name: "MODE", Value: "provisioned"},
+					{Name: "TOP_MOST_CONTROLLER_KIND", Value: "TODO+1"},
+					{Name: "TOP_MOST_CONTROLLER_NAME", Value: "TODO+2"},
 					{Name: "K8S_PODNAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}}},
 					{Name: "K8S_PODUID", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.uid"}}},
 					{Name: "K8S_BASEPODNAME", Value: "test-pod"},
@@ -1028,6 +1030,7 @@ func buildResultPod(_ *testing.T) corev1.Pod {
 					{Name: "oneagent-bin", MountPath: "/mnt/bin"},
 					{Name: "oneagent-share", MountPath: "/mnt/share"},
 					{Name: "oneagent-config", MountPath: "/mnt/config"},
+					{Name: "mint-enrichment", MountPath: "/var/lib/dynatrace/enrichment"},
 				},
 			}},
 			Containers: []corev1.Container{{
@@ -1044,6 +1047,10 @@ func buildResultPod(_ *testing.T) corev1.Pod {
 						Name:      "oneagent-share",
 						MountPath: "/var/lib/dynatrace/oneagent/agent/config/container.conf",
 						SubPath:   "container_test-container.conf",
+					},
+					{
+						Name:      "mint-enrichment",
+						MountPath: "/var/lib/dynatrace/enrichment",
 					},
 				},
 			}},
@@ -1068,6 +1075,12 @@ func buildResultPod(_ *testing.T) corev1.Pod {
 						Secret: &corev1.SecretVolumeSource{
 							SecretName: dtwebhook.SecretConfigName,
 						},
+					},
+				},
+				{
+					Name: "mint-enrichment",
+					VolumeSource: corev1.VolumeSource{
+						EmptyDir: &corev1.EmptyDirVolumeSource{},
 					},
 				},
 			},

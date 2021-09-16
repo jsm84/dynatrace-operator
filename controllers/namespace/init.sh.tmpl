@@ -24,6 +24,13 @@ im_nodes=(
 	["{{$node}}"]="{{$tenant}}"
 	{{- end}}
 )
+
+declare -A im_nodes2systemuuid
+im_nodes2systemuuid=(
+	{{- range $node, $system_uuid := .IMNodes2systemuuid}}
+	["{{$node}}"]="{{$system_uuid}}"
+	{{- end}}
+)
 ###############################################
 
 setFailCode(){
@@ -80,13 +87,14 @@ downloadOneAgentIfNecessary() {
 }
 
 writeConfMintTo() {
+	mkdir -p "${1}"
 	echo "k8s.pod.uid ${K8S_PODUID}
 k8s.pod.name ${K8S_PODNAME}
 k8s.namespace.name ${K8S_NAMESPACE}
-dt.kubernetes.workload.kind ${WORKLOAD_ROOT_KIND}
-dt.kubernetes.workload.name ${WORKLOAD_NAME}
-dt.kubernetes.node.system_uuid ${K8S_KUBE_SYSTEM_UUID}
-dt.kubernetes.cluster.id ${K8S_KUBE_SYSTEM_NAMESPACE_ID}" >> ${1}
+dt.kubernetes.workload.kind ${TOP_MOST_CONTROLLER_KIND}
+dt.kubernetes.workload.name ${TOP_MOST_CONTROLLER_NAME}
+dt.kubernetes.node.system_uuid ${system_uuid}
+dt.kubernetes.cluster.id ${cluster_id}" >> "${1}/${2}"
 }
 
 writeConfBaseTo() {
@@ -116,6 +124,7 @@ createConfigurationFiles() {
 
 	set +u # allow variable to be empty
 	host_tenant="${im_nodes[${K8S_NODE_NAME}]}"
+	system_uuid="${im_nodes2systemuuid[${K8S_NODE_NAME}]}"
 	set -u
 
 	for i in $(seq 1 $CONTAINERS_COUNT)
@@ -126,7 +135,7 @@ createConfigurationFiles() {
 		container_name="${!container_name_var}"
 		container_image="${!container_image_var}"
 
-		container_conf_file="${sh are_dir}/container_${container_name}.conf"
+		container_conf_file="${share_dir}/container_${container_name}.conf"
 
 		echo "Writing ${container_conf_file} file..."
 
@@ -136,7 +145,7 @@ createConfigurationFiles() {
 		if [[ "${host_tenant}" != "" ]]; then
 			if [[ "{{.DynaKube.Status.ConnectionInfo.TenantUUID}}" == "${host_tenant}" ]]; then
 				writeConfK8To ${container_conf_file}
-				writeConfMintTo "/var/lib/dynatrace/enrichment/dt_metadata.properties"
+				writeConfMintTo "/var/lib/dynatrace/enrichment" "dt_metadata.properties"
 			fi
 			writeConfHostTo ${container_conf_file}
 		fi

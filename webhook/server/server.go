@@ -262,6 +262,12 @@ func (m *podInjector) Handle(ctx context.Context, req admission.Request) admissi
 					SecretName: dtwebhook.SecretConfigName,
 				},
 			},
+		},
+		corev1.Volume{
+			Name: "mint-enrichment",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
 		})
 
 	var sc *corev1.SecurityContext
@@ -299,6 +305,8 @@ func (m *podInjector) Handle(ctx context.Context, req admission.Request) admissi
 			{Name: "FAILURE_POLICY", Value: failurePolicy},
 			{Name: "CONTAINERS_COUNT", Value: strconv.Itoa(len(pod.Spec.Containers))},
 			{Name: "MODE", Value: mode},
+			{Name: "TOP_MOST_CONTROLLER_KIND", Value: "TODO+1"},
+			{Name: "TOP_MOST_CONTROLLER_NAME", Value: "TODO+2"},
 			{Name: "K8S_PODNAME", ValueFrom: fieldEnvVar("metadata.name")},
 			{Name: "K8S_PODUID", ValueFrom: fieldEnvVar("metadata.uid")},
 			{Name: "K8S_BASEPODNAME", Value: basePodName},
@@ -310,6 +318,7 @@ func (m *podInjector) Handle(ctx context.Context, req admission.Request) admissi
 			{Name: "oneagent-bin", MountPath: "/mnt/bin"},
 			{Name: "oneagent-share", MountPath: "/mnt/share"},
 			{Name: "oneagent-config", MountPath: "/mnt/config"},
+			{Name: "mint-enrichment", MountPath: "/var/lib/dynatrace/enrichment"},
 		},
 		Resources: oa.Spec.CodeModules.Resources,
 	}
@@ -372,7 +381,12 @@ func updateContainer(c *corev1.Container, oa *dynatracev1alpha1.DynaKube,
 			Name:      "oneagent-share",
 			MountPath: "/var/lib/dynatrace/oneagent/agent/config/container.conf",
 			SubPath:   fmt.Sprintf("container_%s.conf", c.Name),
-		})
+		},
+		corev1.VolumeMount{
+			Name:      "mint-enrichment",
+			MountPath: "/var/lib/dynatrace/enrichment",
+		},
+	)
 
 	c.Env = append(c.Env,
 		corev1.EnvVar{

@@ -120,12 +120,23 @@ func (r *ReconcileNamespaces) Reconcile(ctx context.Context, request reconcile.R
 		}
 	}
 
+	imNodes2systemuuid := map[string]string{}
+	for i := range ims.Items {
+		if s := &ims.Items[i].Status; s.ConnectionInfo.TenantUUID != "" && ims.Items[i].Spec.InfraMonitoring.Enabled { // jeśli znamy nazwe hosta
+			for key := range s.OneAgent.Instances {
+				if key != "" {
+					imNodes2systemuuid[key] = s.KubeSystemUUID
+				}
+			}
+		}
+	}
+
 	var tkns corev1.Secret
 	if err := r.client.Get(ctx, client.ObjectKey{Name: tokenName, Namespace: r.namespace}, &tkns); err != nil {
 		return reconcile.Result{}, errors.WithMessage(err, "failed to query tokens")
 	}
 
-	script, err := newScript(ctx, r.client, dk, tkns, imNodes, r.namespace)
+	script, err := newScript(ctx, r.client, dk, tkns, imNodes, imNodes2systemuuid, r.namespace)
 	if err != nil {
 		return reconcile.Result{}, errors.WithMessage(err, "failed to generate init script")
 	}
@@ -146,13 +157,13 @@ func (r *ReconcileNamespaces) Reconcile(ctx context.Context, request reconcile.R
 }
 
 type script struct {
-	DynaKube   *dynatracev1alpha1.DynaKube
-	PaaSToken  string
-	Proxy      string
-	TrustedCAs []byte
-	ClusterID  string
-	IMNodes    map[string]string
-	// TODO
+	DynaKube           *dynatracev1alpha1.DynaKube
+	PaaSToken          string
+	Proxy              string
+	TrustedCAs         []byte
+	ClusterID          string
+	IMNodes            map[string]string
+	IMNodes2systemuuid map[string]string
 }
 
 func (r *ReconcileNamespaces) ensureSecretDeleted(name string, ns string) error {
@@ -163,7 +174,7 @@ func (r *ReconcileNamespaces) ensureSecretDeleted(name string, ns string) error 
 	return nil
 }
 
-func newScript(ctx context.Context, c client.Client, dynaKube dynatracev1alpha1.DynaKube, tkns corev1.Secret, imNodes map[string]string, ns string) (*script, error) {
+func newScript(ctx context.Context, c client.Client, dynaKube dynatracev1alpha1.DynaKube, tkns corev1.Secret, imNodes map[string]string, imNodes2systemuuid map[string]string, ns string) (*script, error) {
 	var kubeSystemNS corev1.Namespace
 	if err := c.Get(ctx, client.ObjectKey{Name: "kube-system"}, &kubeSystemNS); err != nil {
 		return nil, fmt.Errorf("failed to query for cluster ID: %w", err)
@@ -192,12 +203,13 @@ func newScript(ctx context.Context, c client.Client, dynaKube dynatracev1alpha1.
 	}
 
 	return &script{
-		DynaKube:   &dynaKube,
-		PaaSToken:  string(tkns.Data[dtclient.DynatracePaasToken]),
-		Proxy:      proxy,
-		TrustedCAs: trustedCAs,
-		ClusterID:  string(kubeSystemNS.UID),
-		IMNodes:    imNodes,
+		DynaKube:           &dynaKube,
+		PaaSToken:          string(tkns.Data[dtclient.DynatracePaasToken]),
+		Proxy:              proxy,
+		TrustedCAs:         trustedCAs,
+		ClusterID:          string(kubeSystemNS.UID),
+		IMNodes:            imNodes,
+		IMNodes2systemuuid: imNodes2systemuuid,
 	}, nil
 }
 

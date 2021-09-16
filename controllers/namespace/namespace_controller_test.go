@@ -22,6 +22,7 @@ import (
 var scriptSample string
 
 func TestReconcileNamespace(t *testing.T) {
+	_ = scriptSample
 	t.SkipNow()
 
 	c := fake.NewClient(
