@@ -129,6 +129,7 @@ func prepareDaemonSet(operatorImage, operatorNamespace string, dynakube *v1alpha
 					},
 					ServiceAccountName: prepareServiceAccount(dynakube.Spec.CodeModules.ServiceAccountNameCSIDriver),
 					Volumes:            prepareVolumes(),
+					PriorityClassName:  "system-node-critical",
 				},
 			},
 		},

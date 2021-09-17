@@ -72,3 +72,4 @@ spec:
               cpu: 600m
               memory: 256Mi
       serviceAccountName: dynatrace-webhook
+      priorityClassName: system-cluster-critical
