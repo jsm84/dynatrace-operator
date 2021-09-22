@@ -150,6 +150,9 @@ func TestPodInjection(t *testing.T) {
 	require.NoError(t, err)
 
 	basePod := corev1.Pod{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "Pod",
+		},
 		ObjectMeta: metav1.ObjectMeta{Name: "test-pod-12345", Namespace: "test-namespace"},
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{{
@@ -231,6 +234,9 @@ func TestPodInjectionWithCSI(t *testing.T) {
 	inj, _ := createPodInjector(t, decoder)
 
 	basePod := corev1.Pod{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "Pod",
+		},
 		ObjectMeta: metav1.ObjectMeta{Name: "test-pod-12345", Namespace: "test-namespace"},
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{{
@@ -463,6 +469,9 @@ func TestUseImmutableImage(t *testing.T) {
 		}
 
 		basePod := corev1.Pod{
+			TypeMeta: metav1.TypeMeta{
+				Kind: "Pod",
+			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-pod-12345",
 				Namespace: "test-namespace",
@@ -561,6 +570,9 @@ func TestUseImmutableImage(t *testing.T) {
 		}
 
 		basePod := corev1.Pod{
+			TypeMeta: metav1.TypeMeta{
+				Kind: "Pod",
+			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:        "test-pod-12345",
 				Namespace:   "test-namespace",
@@ -656,6 +668,9 @@ func TestUseImmutableImageWithCSI(t *testing.T) {
 		}
 
 		basePod := corev1.Pod{
+			TypeMeta: metav1.TypeMeta{
+				Kind: "Pod",
+			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-pod-12345",
 				Namespace: "test-namespace",
@@ -745,6 +760,9 @@ func TestUseImmutableImageWithCSI(t *testing.T) {
 		}
 
 		basePod := corev1.Pod{
+			TypeMeta: metav1.TypeMeta{
+				Kind: "Pod",
+			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-pod-12345",
 				Namespace: "test-namespace",
@@ -835,6 +853,9 @@ func TestUseImmutableImageWithCSI(t *testing.T) {
 		}
 
 		basePod := corev1.Pod{
+			TypeMeta: metav1.TypeMeta{
+				Kind: "Pod",
+			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:        "test-pod-12345",
 				Namespace:   "test-namespace",
@@ -924,6 +945,9 @@ func TestAgentVersion(t *testing.T) {
 	}
 
 	basePod := corev1.Pod{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "Pod",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        "test-pod-12345",
 			Namespace:   "test-namespace",
@@ -1018,6 +1042,9 @@ func TestAgentVersionWithCSI(t *testing.T) {
 	}
 
 	basePod := corev1.Pod{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "Pod",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        "test-pod-12345",
 			Namespace:   "test-namespace",
@@ -1075,6 +1102,9 @@ func TestAgentVersionWithCSI(t *testing.T) {
 
 func buildResultPod(_ *testing.T) corev1.Pod {
 	return corev1.Pod{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "Pod",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-pod-12345",
 			Namespace: "test-namespace",
@@ -1102,6 +1132,8 @@ func buildResultPod(_ *testing.T) corev1.Pod {
 					{Name: "K8S_BASEPODNAME", Value: "test-pod"},
 					{Name: "K8S_NAMESPACE", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}}},
 					{Name: "K8S_NODE_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
+					{Name: "DT_WORKLOAD_KIND", Value: "Pod"},
+					{Name: "DT_WORKLOAD_NAME", Value: "test-pod-12345"},
 					{Name: "CONTAINER_1_NAME", Value: "test-container"},
 					{Name: "CONTAINER_1_IMAGE", Value: "alpine"},
 				},
@@ -1109,6 +1141,7 @@ func buildResultPod(_ *testing.T) corev1.Pod {
 					{Name: "oneagent-bin", MountPath: "/mnt/bin"},
 					{Name: "oneagent-share", MountPath: "/mnt/share"},
 					{Name: "oneagent-config", MountPath: "/mnt/config"},
+					{Name: "mint-enrichment", MountPath: "/var/lib/dynatrace/enrichment"},
 				},
 			}},
 			Containers: []corev1.Container{{
@@ -1126,6 +1159,7 @@ func buildResultPod(_ *testing.T) corev1.Pod {
 						MountPath: "/var/lib/dynatrace/oneagent/agent/config/container.conf",
 						SubPath:   "container_test-container.conf",
 					},
+					{Name: "mint-enrichment", MountPath: "/var/lib/dynatrace/enrichment"},
 				},
 			}},
 			Volumes: []corev1.Volume{
@@ -1149,6 +1183,12 @@ func buildResultPod(_ *testing.T) corev1.Pod {
 						Secret: &corev1.SecretVolumeSource{
 							SecretName: dtwebhook.SecretConfigName,
 						},
+					},
+				},
+				{
+					Name: "mint-enrichment",
+					VolumeSource: corev1.VolumeSource{
+						EmptyDir: &corev1.EmptyDirVolumeSource{},
 					},
 				},
 			},
