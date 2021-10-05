@@ -31,6 +31,8 @@ const (
 	annotationFeatureEnableWebhookReinvocationPolicy = annotationFeaturePrefix + "enable-webhook-reinvocation-policy"
 	annotationFeatureIgnoreUnknownState              = annotationFeaturePrefix + "ignore-unknown-state"
 	annotationFeatureIgnoredNamespaces               = annotationFeaturePrefix + "ignored-namespaces"
+	annotationFeatureEnableStatsDIngest              = annotationFeaturePrefix + "enable-statsd"
+	annotationFeatureUseActiveGateImageForStatsD     = annotationFeaturePrefix + "use-activegate-image-for-statsd"
 )
 
 var (
@@ -99,4 +101,16 @@ func (dk *DynaKube) FeatureIgnoredNamespaces() []string {
 		return defaultIgnoredNamespaces
 	}
 	return *ignoredNamespaces
+}
+
+// FeatureEnableStatsDIngest is a feature flag that makes the operator include 2 extra containers (Extension Controller and StatsD data source)
+// in the ActiveGate pod, and defines an extra UDP port in the AG service for StatsD packets.
+func (dk *DynaKube) FeatureEnableStatsDIngest() bool {
+	return dk.Annotations[annotationFeatureEnableStatsDIngest] == "true"
+}
+
+// FeatureUseActiveGateImageForStatsD is a feature flag that makes the operator use ActiveGate image when initializing Extension Controller and StatsD containers
+// (using special predefined entry points).
+func (dk *DynaKube) FeatureUseActiveGateImageForStatsD() bool {
+	return dk.Annotations[annotationFeatureUseActiveGateImageForStatsD] == "true"
 }

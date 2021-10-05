@@ -13,6 +13,23 @@ import (
 )
 
 func createService(instance *dynatracev1beta1.DynaKube, feature string) *corev1.Service {
+	ports := []corev1.ServicePort{
+		{
+			Name:       consts.ServicePortName,
+			Protocol:   corev1.ProtocolTCP,
+			Port:       consts.ServicePort,
+			TargetPort: intstr.FromString(consts.ServiceTargetPort),
+		},
+	}
+	if instance.FeatureEnableStatsDIngest() {
+		ports = append(ports, corev1.ServicePort{
+			Name:       consts.StatsDIngestPortName,
+			Protocol:   corev1.ProtocolUDP,
+			Port:       consts.StatsDIngestPort,
+			TargetPort: intstr.FromString(consts.StatsDIngestTargetPort),
+		})
+	}
+
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      BuildServiceName(instance.Name, feature),
@@ -22,13 +39,7 @@ func createService(instance *dynatracev1beta1.DynaKube, feature string) *corev1.
 		Spec: corev1.ServiceSpec{
 			Type:     corev1.ServiceTypeClusterIP,
 			Selector: statefulset.BuildLabelsFromInstance(instance, feature),
-			Ports: []corev1.ServicePort{
-				{
-					Protocol:   corev1.ProtocolTCP,
-					Port:       consts.ServicePort,
-					TargetPort: intstr.FromString(consts.ServiceTargetPort),
-				},
-			},
+			Ports:    ports,
 		},
 	}
 }
