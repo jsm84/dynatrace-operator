@@ -61,13 +61,23 @@ func setReadinessProbePort() events.StatefulSetEvent {
 	}
 }
 
-func setCommunicationsPort(_ *dynatracev1beta1.DynaKube) events.StatefulSetEvent {
+func setCommunicationsPort(dk *dynatracev1beta1.DynaKube) events.StatefulSetEvent {
 	return func(sts *appsv1.StatefulSet) {
 		sts.Spec.Template.Spec.Containers[0].Ports = []corev1.ContainerPort{
 			{
 				Name:          consts.ServiceTargetPort,
 				ContainerPort: containerPort,
 			},
+		}
+		if dk.FeatureEnableStatsDIngest() {
+			// TODO Refactor (access containers by name instead of index)
+			sts.Spec.Template.Spec.Containers[2].Ports = []corev1.ContainerPort{
+				{
+					Name:          consts.StatsDIngestTargetPort,
+					ContainerPort: consts.StatsDIngestPort,
+					Protocol:      corev1.ProtocolUDP,
+				},
+			}
 		}
 	}
 }
