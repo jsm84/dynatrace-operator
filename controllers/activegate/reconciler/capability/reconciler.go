@@ -106,6 +106,12 @@ func (r *Reconciler) Reconcile() (update bool, err error) {
 		if update || err != nil {
 			return update, errors.WithStack(err)
 		}
+
+		err = r.updateServiceIfOutdated()
+		if err != nil {
+			r.log.Error(err, "could not update service")
+			return false, errors.WithStack(err)
+		}
 	}
 
 	update, err = r.Reconciler.Reconcile()
@@ -126,4 +132,29 @@ func (r *Reconciler) createServiceIfNotExists() (bool, error) {
 		return true, errors.WithStack(err)
 	}
 	return false, errors.WithStack(err)
+}
+
+func (r *Reconciler) updateServiceIfOutdated() error {
+	desiredService := createService(r.Instance, r.ShortName())
+	installedService := &corev1.Service{}
+
+	err := r.Get(context.TODO(), client.ObjectKey{Name: desiredService.Name, Namespace: desiredService.Namespace}, installedService)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	if r.isOutdated(installedService, desiredService) {
+		desiredService.Spec.ClusterIP = installedService.Spec.ClusterIP
+		desiredService.ObjectMeta.ResourceVersion = installedService.ObjectMeta.ResourceVersion
+		return r.updateService(desiredService)
+	}
+	return nil
+}
+
+func (r *Reconciler) isOutdated(installedService, desiredService *corev1.Service) bool {
+	return !dynatracev1beta1.IsInternalFlagsEqual(installedService, desiredService)
+}
+
+func (r *Reconciler) updateService(service *corev1.Service) error {
+	return r.Update(context.TODO(), service)
 }

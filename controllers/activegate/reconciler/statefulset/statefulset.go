@@ -20,8 +20,8 @@ import (
 const (
 	serviceAccountPrefix = "dynatrace-"
 
-	AnnotationVersion         = "internal.operator.dynatrace.com/version"
-	AnnotationCustomPropsHash = "internal.operator.dynatrace.com/custom-properties-hash"
+	AnnotationVersion         = dynatracev1beta1.InternalFlagPrefix + "version"
+	AnnotationCustomPropsHash = dynatracev1beta1.InternalFlagPrefix + "custom-properties-hash"
 
 	DTCapabilities       = "DT_CAPABILITIES"
 	DTIdSeedNamespace    = "DT_ID_SEED_NAMESPACE"
