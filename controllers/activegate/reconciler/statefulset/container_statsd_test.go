@@ -14,7 +14,7 @@ func TestStatsD_BuildContainerAndVolumes(t *testing.T) {
 	instance := buildTestInstance()
 	capabilityProperties := &instance.Spec.Routing.CapabilityProperties
 	stsProperties := NewStatefulSetProperties(instance, capabilityProperties,
-		"", "", "", "", "", "", "",
+		"", "", "", "", "",
 		nil, nil, nil, logr.TestLogger{T: t},
 	)
 
