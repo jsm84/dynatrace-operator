@@ -47,7 +47,7 @@ func TestCreateService(t *testing.T) {
 		Port:       consts.ServicePort,
 		TargetPort: intstr.FromString(consts.ServiceTargetPort),
 	})
-	if instance.FeatureEnableStatsDIngest() {
+	if instance.NeedsStatsD() {
 		assert.Contains(t, ports, corev1.ServicePort{
 			Name:       consts.StatsDIngestPortName,
 			Protocol:   corev1.ProtocolUDP,
