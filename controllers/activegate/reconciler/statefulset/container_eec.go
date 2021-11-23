@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	dynatracev1beta1 "github.com/Dynatrace/dynatrace-operator/api/v1beta1"
+	"github.com/Dynatrace/dynatrace-operator/controllers/activegate/internal/consts"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
@@ -27,7 +28,7 @@ func NewExtensionController(stsProperties *statefulSetProperties) *ExtensionCont
 
 func (eec *ExtensionController) BuildContainer() corev1.Container {
 	return corev1.Container{
-		Name:            fmt.Sprintf("%s-eec", dynatracev1beta1.OperatorName),
+		Name:            consts.EecContainerName,
 		Image:           eec.StsProperties.DynaKube.ActiveGateImage(),
 		ImagePullPolicy: corev1.PullAlways,
 		Env:             eec.buildEnvs(),

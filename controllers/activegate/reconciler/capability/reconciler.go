@@ -61,23 +61,43 @@ func setReadinessProbePort() events.StatefulSetEvent {
 	}
 }
 
+func getContainerByName(containers []corev1.Container, containerName string) (*corev1.Container, error) {
+	for i := range containers {
+		if containers[i].Name == containerName {
+			return &containers[i], nil
+		}
+	}
+	return nil, errors.Errorf(`Cannot find container "%s" in the provided slice (len %d)`,
+		containerName, len(containers),
+	)
+}
+
 func setCommunicationsPort(dk *dynatracev1beta1.DynaKube) events.StatefulSetEvent {
 	return func(sts *appsv1.StatefulSet) {
-		sts.Spec.Template.Spec.Containers[0].Ports = []corev1.ContainerPort{
-			{
-				Name:          consts.ServiceTargetPort,
-				ContainerPort: containerPort,
-			},
+		{
+			activeGateContainer, err := getContainerByName(sts.Spec.Template.Spec.Containers, consts.ActiveGateContainerName)
+			if err == nil {
+				activeGateContainer.Ports = []corev1.ContainerPort{
+					{
+						Name:          consts.ServiceTargetPort,
+						ContainerPort: containerPort,
+					},
+				}
+			}
+			// TODO How to report an error?
 		}
 		if dk.FeatureEnableStatsDIngest() {
-			// TODO Refactor (access containers by name instead of index)
-			sts.Spec.Template.Spec.Containers[2].Ports = []corev1.ContainerPort{
-				{
-					Name:          consts.StatsDIngestTargetPort,
-					ContainerPort: consts.StatsDIngestPort,
-					Protocol:      corev1.ProtocolUDP,
-				},
+			statsdContainer, err := getContainerByName(sts.Spec.Template.Spec.Containers, consts.StatsDContainerName)
+			if err == nil {
+				statsdContainer.Ports = []corev1.ContainerPort{
+					{
+						Name:          consts.StatsDIngestTargetPort,
+						ContainerPort: consts.StatsDIngestPort,
+						Protocol:      corev1.ProtocolUDP,
+					},
+				}
 			}
+			// TODO How to report error?
 		}
 	}
 }
