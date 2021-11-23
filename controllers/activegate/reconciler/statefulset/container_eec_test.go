@@ -34,7 +34,6 @@ func TestExtensionController_BuildContainerAndVolumes(t *testing.T) {
 			"/var/lib/dynatrace/gateway/config",
 			"/mnt/dsexecargs",
 			"/var/lib/dynatrace/remotepluginmodule/agent/runtime/datasources",
-			"/var/lib/dynatrace/remotepluginmodule/agent/conf/runtime",
 			"/opt/dynatrace/remotepluginmodule/agent/datasources/statsd",
 		} {
 			assertion.Truef(mountPathIsIn(container.VolumeMounts, mountPath), "Expected that EEC container defines mount point %s", mountPath)
