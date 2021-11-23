@@ -2,11 +2,8 @@ package statefulset
 
 import (
 	"fmt"
-	"net/url"
-	"strings"
 
 	dynatracev1beta1 "github.com/Dynatrace/dynatrace-operator/api/v1beta1"
-	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
@@ -108,7 +105,7 @@ func (eec *ExtensionController) buildVolumeMounts() []corev1.VolumeMount {
 }
 
 func (eec *ExtensionController) buildEnvs() []corev1.EnvVar {
-	tenantId, err := getTenantId(eec.StsProperties.Spec.APIURL)
+	tenantId, err := dynatracev1beta1.TenantUUID(eec.StsProperties.Spec.APIURL)
 	if err != nil {
 		eec.StsProperties.log.Error(err, "Problem getting tenant id from api url")
 	}
@@ -117,25 +114,4 @@ func (eec *ExtensionController) buildEnvs() []corev1.EnvVar {
 		{Name: "ServerUrl", Value: fmt.Sprintf("https://localhost:%d/communication", activeGateInternalCommunicationPort)},
 		{Name: "EecIngestPort", Value: fmt.Sprintf("%d", eecIngestPort)},
 	}
-}
-
-func getTenantId(apiUrl string) (string, error) {
-	if !strings.HasSuffix(apiUrl, "/api") {
-		return "", fmt.Errorf("api url %s does not end with /api", apiUrl)
-	}
-
-	parsedUrl, err := url.Parse(apiUrl)
-	if err != nil {
-		return "", errors.WithMessagef(err, "problem parsing tenant id from url %s", apiUrl)
-	}
-
-	fqdn := parsedUrl.Hostname()
-	hostnameWithDomains := strings.FieldsFunc(fqdn,
-		func(r rune) bool { return r == '.' },
-	)
-	if len(hostnameWithDomains) < 1 {
-		return "", fmt.Errorf("problem getting tenant id from fqdn '%s'", fqdn)
-	}
-
-	return hostnameWithDomains[0], nil
 }

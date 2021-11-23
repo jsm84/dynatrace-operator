@@ -114,3 +114,42 @@ func TestTokens(t *testing.T) {
 		assert.Equal(t, dk.Tokens(), testName)
 	})
 }
+
+func TestTenantUUID(t *testing.T) {
+	testCases := []struct {
+		apiUrl           string
+		expectedTenantId string
+		expectedError    string
+	}{
+		{
+			apiUrl: "https://demo.dev.dynatracelabs.com/api", expectedTenantId: "demo",
+			expectedError: "",
+		},
+		{
+			apiUrl: "demo.dev.dynatracelabs.com/api", expectedTenantId: "",
+			expectedError: "problem getting tenant id from fqdn ''",
+		},
+		{
+			apiUrl: "https://google.com", expectedTenantId: "",
+			expectedError: "api url https://google.com does not end with /api",
+		},
+		{
+			apiUrl: "/api", expectedTenantId: "",
+			expectedError: "problem getting tenant id from fqdn ''",
+		},
+	}
+
+	for _, testCase := range testCases {
+		actualTenantId, err := TenantUUID(testCase.apiUrl)
+		if len(testCase.expectedError) > 0 {
+			assert.EqualErrorf(t, err, testCase.expectedError, "Expected that getting tenant id from '%s' will result in: '%v'",
+				testCase.apiUrl, testCase.expectedError,
+			)
+		} else {
+			assert.NoErrorf(t, err, "Expected that getting tenant id from '%s' will be successful", testCase.apiUrl)
+		}
+		assert.Equalf(t, testCase.expectedTenantId, actualTenantId, "Expected that tenant id of %s is %s, but found %s",
+			testCase.apiUrl, testCase.expectedTenantId, actualTenantId,
+		)
+	}
+}

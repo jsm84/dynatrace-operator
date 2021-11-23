@@ -37,7 +37,6 @@ func (statsd *StatsD) BuildContainer() corev1.Container {
 			Handler: corev1.Handler{
 				HTTPGet: &corev1.HTTPGetAction{
 					Path: "/readyz",
-					//Port:   intstr.IntOrString{StrVal: statsDProbesPortName},
 					Port: intstr.IntOrString{IntVal: statsDProbesPort},
 				},
 			},
