@@ -308,3 +308,71 @@ func TestReconciler_calculateStatefulSetName(t *testing.T) {
 		})
 	}
 }
+
+func TestGetContainerByName(t *testing.T) {
+	type testData struct {
+		containers          []corev1.Container
+		lookingForContainer string
+		errorMessage        string
+	}
+
+	verifyAll := func(t *testing.T, testCases []testData) {
+		for _, testCase := range testCases {
+			container, err := getContainerByName(testCase.containers, testCase.lookingForContainer)
+			if testCase.errorMessage == "" {
+				assert.NoError(t, err)
+				assert.NotNil(t, container)
+				assert.Equal(t, testCase.lookingForContainer, container.Name)
+			} else {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), testCase.errorMessage)
+				assert.Nil(t, container)
+			}
+		}
+	}
+
+	t.Run("empty slice test cases", func(t *testing.T) {
+		verifyAll(t, []testData{
+			{
+				containers:          nil,
+				lookingForContainer: "",
+				errorMessage:        `Cannot find container "" in the provided slice (len 0)`,
+			},
+			{
+				containers:          []corev1.Container{},
+				lookingForContainer: "",
+				errorMessage:        `Cannot find container "" in the provided slice (len 0)`,
+			},
+			{
+				containers:          []corev1.Container{},
+				lookingForContainer: "something",
+				errorMessage:        `Cannot find container "something" in the provided slice (len 0)`,
+			},
+		})
+	})
+
+	t.Run("non-empty collection but cannot match name", func(t *testing.T) {
+		verifyAll(t, []testData{
+			{
+				containers: []corev1.Container{
+					{Name: consts.ActiveGateContainerName},
+					{Name: consts.StatsDContainerName},
+				},
+				lookingForContainer: consts.EecContainerName,
+				errorMessage:        fmt.Sprintf(`Cannot find container "%s" in the provided slice (len 2)`, consts.EecContainerName),
+			},
+		})
+	})
+
+	t.Run("happy path", func(t *testing.T) {
+		verifyAll(t, []testData{
+			{
+				containers: []corev1.Container{
+					{Name: consts.StatsDContainerName},
+				},
+				lookingForContainer: consts.StatsDContainerName,
+				errorMessage:        "",
+			},
+		})
+	})
+}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	dynatracev1beta1 "github.com/Dynatrace/dynatrace-operator/api/v1beta1"
+	"github.com/Dynatrace/dynatrace-operator/controllers/activegate/internal/consts"
 	"github.com/Dynatrace/dynatrace-operator/controllers/activegate/internal/events"
 	"github.com/Dynatrace/dynatrace-operator/controllers/customproperties"
 	"github.com/Dynatrace/dynatrace-operator/controllers/kubeobjects"
@@ -161,7 +162,7 @@ func buildContainers(stsProperties *statefulSetProperties, extraContainerBuilder
 
 func buildActiveGateContainer(stsProperties *statefulSetProperties) corev1.Container {
 	return corev1.Container{
-		Name:            dynatracev1beta1.OperatorName,
+		Name:            consts.ActiveGateContainerName,
 		Image:           stsProperties.DynaKube.ActiveGateImage(),
 		Resources:       stsProperties.CapabilityProperties.Resources,
 		ImagePullPolicy: corev1.PullAlways,
