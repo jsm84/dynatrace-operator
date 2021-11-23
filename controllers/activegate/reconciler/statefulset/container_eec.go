@@ -70,12 +70,6 @@ func (eec *ExtensionController) BuildVolumes() []corev1.Volume {
 				EmptyDir: &corev1.EmptyDirVolumeSource{},
 			},
 		},
-		{
-			Name:         "eec-config",
-			VolumeSource: corev1.VolumeSource{
-				// TODO
-			},
-		},
 	}
 }
 
@@ -99,7 +93,6 @@ func (eec *ExtensionController) buildVolumeMounts() []corev1.VolumeMount {
 		{Name: "auth-tokens", MountPath: "/var/lib/dynatrace/gateway/config"},
 		{Name: "eec-ds-shared", MountPath: "/mnt/dsexecargs"},
 		{Name: "dsauthtokendir", MountPath: "/var/lib/dynatrace/remotepluginmodule/agent/runtime/datasources"},
-		{Name: "eec-config", MountPath: "/var/lib/dynatrace/remotepluginmodule/agent/conf/runtime"},
 		{Name: "ds-metadata", MountPath: "/opt/dynatrace/remotepluginmodule/agent/datasources/statsd", ReadOnly: true},
 	}
 }
