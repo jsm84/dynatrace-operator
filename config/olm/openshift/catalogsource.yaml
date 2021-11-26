@@ -1,0 +1,9 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: dynatrace-catalog
+  namespace: dynatrace
+spec:
+  sourceType: grpc
+  image: quay.io/lukas_hinterreiter/luhi:olm_manual_index
+

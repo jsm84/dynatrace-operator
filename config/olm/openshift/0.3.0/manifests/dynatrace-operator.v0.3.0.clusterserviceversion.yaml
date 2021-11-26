@@ -2,79 +2,52 @@ apiVersion: operators.coreos.com/v1alpha1
 kind: ClusterServiceVersion
 metadata:
   annotations:
-    alm-examples: '[]'
+    alm-examples: |-
+      [
+        {
+          "apiVersion": "dynatrace.com/v1beta1",
+          "kind": "DynaKube",
+          "metadata": {
+            "name": "dynakube",
+            "namespace": "dynatrace"
+          },
+          "spec": {
+            "activeGate": {
+              "capabilities": [
+                "routing",
+                "kubernetes-monitoring"
+              ],
+              "image": ""
+            },
+            "apiUrl": "https://ENVIRONMENTID.live.dynatrace.com/api",
+            "oneAgent": {
+              "classicFullStack": {
+                "image": "",
+                "tolerations": [
+                  {
+                    "effect": "NoSchedule",
+                    "key": "node-role.kubernetes.io/master",
+                    "operator": "Exists"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
     capabilities: Deep Insights
     categories: Monitoring,Logging & Tracing
     containerImage: registry.connect.redhat.com/dynatrace/dynatrace-operator
+    operators.operatorframework.io/builder: operator-sdk-v1.15.0
+    operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
     repository: https://github.com/Dynatrace/dynatrace-operator
     support: Dynatrace
-  name: dynatrace-operator.v0.0.0
+  name: dynatrace-operator.v0.3.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
   customresourcedefinitions:
     owned:
-    - description: DynaKube is the Schema for the DynaKube API
-      displayName: Dynatrace DynaKube
-      kind: DynaKube
-      name: dynakubes.dynatrace.com
-      resources:
-      - kind: DaemonSet
-        name: ""
-        version: v1
-      - kind: Pod
-        name: ""
-        version: v1
-      - kind: StatefulSet
-        name: ""
-        version: v1
-      specDescriptors:
-      - description: Location of the Dynatrace API to connect to, including your specific
-          environment ID
-        displayName: API URL
-        path: apiUrl
-        x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:text
-      - description: Credentials for the DynaKube to connect back to Dynatrace.
-        displayName: API and PaaS Tokens
-        path: tokens
-        x-descriptors:
-        - urn:alm:descriptor:io.kubernetes:Secret
-      - description: Disable certificate validation checks for installer download
-          and API communication
-        displayName: Skip Certificate Check
-        path: skipCertCheck
-        x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:advanced
-        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
-      - description: 'Optional: Adds custom RootCAs from a configmap This property
-          only affects certificates used to communicate with the Dynatrace API. The
-          property is not applied to the ActiveGate'
-        displayName: Trusted CAs
-        path: trustedCAs
-        x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:advanced
-        - urn:alm:descriptor:io.kubernetes:ConfigMap
-      - description: 'Optional: Sets Network Zone for OneAgent and ActiveGate pods'
-        displayName: Network Zone
-        path: networkZone
-        x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:advanced
-        - urn:alm:descriptor:com.tectonic.ui:text
-      - description: 'Optional: Pull secret for your private registry'
-        displayName: Custom PullSecret
-        path: customPullSecret
-        x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:advanced
-        - urn:alm:descriptor:io.kubernetes:Secret
-      - description: If enabled, Istio on the cluster will be configured automatically
-          to allow access to the Dynatrace environment
-        displayName: Enable Istio automatic management
-        path: enableIstio
-        x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:advanced
-        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
-      version: v1
     - description: DynaKube is the Schema for the DynaKube API
       displayName: Dynatrace DynaKube
       kind: DynaKube
@@ -565,6 +538,9 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:advanced
         - urn:alm:descriptor:io.kubernetes:ServiceAccount
       version: v1alpha1
+    - kind: DynaKube
+      name: dynakubes.dynatrace.com
+      version: v1beta1
   description: |
     The Dynatrace Operator supports rollout and lifecycle of various Dynatrace components in Kubernetes and OpenShift.
 
@@ -609,8 +585,522 @@ spec:
     mediatype: image/png
   install:
     spec:
-      deployments: null
-    strategy: ""
+      clusterPermissions:
+      - rules:
+        - apiGroups:
+          - security.openshift.io
+          resourceNames:
+          - privileged
+          - host
+          resources:
+          - securitycontextconstraints
+          verbs:
+          - use
+        serviceAccountName: dynatrace-dynakube-oneagent
+      - rules:
+        - apiGroups:
+          - security.openshift.io
+          resourceNames:
+          - host
+          - privileged
+          resources:
+          - securitycontextconstraints
+          verbs:
+          - use
+        serviceAccountName: dynatrace-dynakube-oneagent-unprivileged
+      - rules:
+        - apiGroups:
+          - ""
+          - batch
+          - apps
+          - apps.openshift.io
+          - config.openshift.io
+          resources:
+          - nodes
+          - pods
+          - namespaces
+          - deployments
+          - replicasets
+          - deploymentconfigs
+          - replicationcontrollers
+          - jobs
+          - cronjobs
+          - statefulsets
+          - daemonsets
+          - events
+          - resourcequotas
+          - pods/proxy
+          - nodes/proxy
+          - services
+          - clusterversions
+          verbs:
+          - list
+          - watch
+          - get
+        - nonResourceURLs:
+          - /metrics
+          - /version
+          - /readyz
+          - /healthz
+          verbs:
+          - get
+        serviceAccountName: dynatrace-kubernetes-monitoring
+      - rules:
+        - apiGroups:
+          - ""
+          resources:
+          - nodes
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - ""
+          resources:
+          - namespaces
+          verbs:
+          - get
+          - list
+          - watch
+          - update
+        - apiGroups:
+          - ""
+          resources:
+          - secrets
+          verbs:
+          - create
+        - apiGroups:
+          - ""
+          resourceNames:
+          - dynatrace-dynakube-config
+          resources:
+          - secrets
+          verbs:
+          - get
+          - update
+          - delete
+        - apiGroups:
+          - admissionregistration.k8s.io
+          resources:
+          - mutatingwebhookconfigurations
+          verbs:
+          - list
+          - create
+          - watch
+        - apiGroups:
+          - admissionregistration.k8s.io
+          resources:
+          - validatingwebhookconfigurations
+          verbs:
+          - list
+          - create
+          - watch
+        - apiGroups:
+          - admissionregistration.k8s.io
+          resourceNames:
+          - dynatrace-webhook
+          resources:
+          - mutatingwebhookconfigurations
+          verbs:
+          - get
+          - update
+        - apiGroups:
+          - admissionregistration.k8s.io
+          resourceNames:
+          - dynatrace-webhook
+          resources:
+          - validatingwebhookconfigurations
+          verbs:
+          - get
+          - update
+        - apiGroups:
+          - ""
+          resources:
+          - events
+          verbs:
+          - create
+          - patch
+        - apiGroups:
+          - apiextensions.k8s.io
+          resourceNames:
+          - dynakubes.dynatrace.com
+          resources:
+          - customresourcedefinitions
+          verbs:
+          - get
+          - update
+        - apiGroups:
+          - apiextensions.k8s.io
+          resources:
+          - customresourcedefinitions
+          verbs:
+          - list
+          - watch
+        serviceAccountName: dynatrace-operator
+      - rules:
+        - apiGroups:
+          - ""
+          resources:
+          - namespaces
+          verbs:
+          - get
+          - list
+          - watch
+          - update
+        - apiGroups:
+          - ""
+          resources:
+          - events
+          verbs:
+          - create
+          - patch
+        - apiGroups:
+          - ""
+          resources:
+          - secrets
+          verbs:
+          - create
+        - apiGroups:
+          - ""
+          resourceNames:
+          - dynatrace-dynakube-config
+          resources:
+          - secrets
+          verbs:
+          - get
+          - list
+          - watch
+          - update
+        serviceAccountName: dynatrace-webhook
+      deployments:
+      - name: dynatrace-operator
+        spec:
+          replicas: 1
+          revisionHistoryLimit: 1
+          selector:
+            matchLabels:
+              name: dynatrace-operator
+          strategy:
+            type: RollingUpdate
+          template:
+            metadata:
+              labels:
+                dynatrace: operator
+                name: dynatrace-operator
+                operator: dynakube
+            spec:
+              affinity:
+                nodeAffinity:
+                  requiredDuringSchedulingIgnoredDuringExecution:
+                    nodeSelectorTerms:
+                    - matchExpressions:
+                      - key: kubernetes.io/arch
+                        operator: In
+                        values:
+                        - amd64
+                        - arm64
+                      - key: kubernetes.io/os
+                        operator: In
+                        values:
+                        - linux
+              containers:
+              - args:
+                - operator
+                env:
+                - name: POD_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+                - name: POD_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.name
+                image: quay.io/dynatrace/dynatrace-operator:snapshot-release-0-3
+                imagePullPolicy: Always
+                livenessProbe:
+                  httpGet:
+                    path: /healthz
+                    port: server-port
+                    scheme: HTTP
+                  initialDelaySeconds: 15
+                  periodSeconds: 10
+                name: dynatrace-operator
+                ports:
+                - containerPort: 8080
+                  name: metrics
+                - containerPort: 10080
+                  name: server-port
+                readinessProbe:
+                  httpGet:
+                    path: /healthz
+                    port: server-port
+                    scheme: HTTP
+                  initialDelaySeconds: 15
+                  periodSeconds: 10
+                resources:
+                  limits:
+                    cpu: 100m
+                    memory: 128Mi
+                  requests:
+                    cpu: 50m
+                    memory: 64Mi
+              serviceAccountName: dynatrace-operator
+      - name: dynatrace-webhook
+        spec:
+          replicas: 1
+          revisionHistoryLimit: 1
+          selector:
+            matchLabels:
+              internal.dynatrace.com/app: webhook
+              internal.dynatrace.com/component: webhook
+          strategy:
+            type: RollingUpdate
+          template:
+            metadata:
+              annotations:
+                kubectl.kubernetes.io/default-logs-container: webhook
+              labels:
+                dynatrace.com/operator: oneagent
+                internal.dynatrace.com/app: webhook
+                internal.dynatrace.com/component: webhook
+            spec:
+              affinity:
+                nodeAffinity:
+                  requiredDuringSchedulingIgnoredDuringExecution:
+                    nodeSelectorTerms:
+                    - matchExpressions:
+                      - key: kubernetes.io/arch
+                        operator: In
+                        values:
+                        - amd64
+                        - arm64
+                      - key: kubernetes.io/os
+                        operator: In
+                        values:
+                        - linux
+              containers:
+              - args:
+                - webhook-server
+                env:
+                - name: POD_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+                - name: POD_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.name
+                image: quay.io/dynatrace/dynatrace-operator:snapshot-release-0-3
+                imagePullPolicy: Always
+                name: webhook
+                ports:
+                - containerPort: 8383
+                  name: metrics
+                - containerPort: 8384
+                  name: validation
+                - containerPort: 8443
+                  name: server-port
+                readinessProbe:
+                  httpGet:
+                    path: /healthz
+                    port: server-port
+                    scheme: HTTPS
+                resources:
+                  limits:
+                    cpu: 300m
+                    memory: 128Mi
+                  requests:
+                    cpu: 300m
+                    memory: 128Mi
+              serviceAccountName: dynatrace-webhook
+      permissions:
+      - rules:
+        - apiGroups:
+          - dynatrace.com
+          resources:
+          - dynakubes
+          verbs:
+          - get
+          - list
+          - watch
+          - update
+          - create
+        - apiGroups:
+          - dynatrace.com
+          resources:
+          - dynakubes/finalizers
+          - dynakubes/status
+          verbs:
+          - update
+        - apiGroups:
+          - apps
+          resources:
+          - statefulsets
+          verbs:
+          - get
+          - list
+          - watch
+          - create
+          - update
+          - delete
+        - apiGroups:
+          - apps
+          resources:
+          - daemonsets
+          verbs:
+          - get
+          - list
+          - watch
+          - create
+          - update
+          - delete
+        - apiGroups:
+          - apps
+          resources:
+          - replicasets
+          - deployments
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - apps
+          resources:
+          - deployments/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - ""
+          resources:
+          - configmaps
+          verbs:
+          - get
+          - list
+          - watch
+          - create
+          - update
+          - delete
+        - apiGroups:
+          - ""
+          resources:
+          - pods
+          verbs:
+          - get
+          - list
+          - watch
+          - delete
+          - create
+        - apiGroups:
+          - ""
+          resources:
+          - secrets
+          verbs:
+          - get
+          - list
+          - watch
+          - create
+          - update
+        - apiGroups:
+          - ""
+          resources:
+          - events
+          verbs:
+          - list
+          - create
+        - apiGroups:
+          - ""
+          resources:
+          - services
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - monitoring.coreos.com
+          resources:
+          - servicemonitors
+          verbs:
+          - get
+          - create
+        - apiGroups:
+          - networking.istio.io
+          resources:
+          - serviceentries
+          - virtualservices
+          verbs:
+          - get
+          - list
+          - create
+          - update
+          - delete
+        - apiGroups:
+          - coordination.k8s.io
+          resources:
+          - leases
+          verbs:
+          - get
+          - update
+          - create
+        serviceAccountName: dynatrace-operator
+      - rules:
+        serviceAccountName: dyntrace-rounting
+      - rul
+      - rules:
+        - apiGroups:
+          - ""
+          resources:
+          - services
+          - configmaps
+          - secrets
+          verbs:
+          - get
+          - list
+          - watch
+          - create
+          - update
+        - apiGroups:
+          - ""
+          resources:
+          - pods
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - dynatrace.com
+          resources:
+          - dynakubes
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - ""
+          resources:
+          - events
+          verbs:
+          - list
+          - create
+        - apiGroups:
+          - coordination.k8s.io
+          resources:
+          - leases
+          verbs:
+          - get
+          - update
+          - create
+        - apiGroups:
+          - apps
+          resources:
+          - daemonsets
+          verbs:
+          - get
+          - list
+          - watch
+        serviceAccountName: dynatrace-webhook
+    strategy: deployment
   installModes:
   - supported: false
     type: OwnNamespace
@@ -638,4 +1128,85 @@ spec:
   provider:
     name: Dynatrace LLC
     url: www.dynatrace.com
-  version: 0.0.0
+  version: 0.3.0
+  webhookdefinitions:
+  - admissionReviewVersions:
+    - v1beta1
+    containerPort: 443
+    conversionCRDs:
+    - dynakubes.dynatrace.com
+    deploymentName: dynatrace-webhook
+    generateName: cdynakubes.kb.io
+    sideEffects: None
+    targetPort: server-port
+    type: ConversionWebhook
+    webhookPath: /convert
+  - admissionReviewVersions:
+    - v1
+    - v1beta1
+    - v1alpha1
+    containerPort: 443
+    deploymentName: dynatrace-webhook
+    generateName: webhook.dynatrace.com
+    rules:
+    - apiGroups:
+      - dynatrace.com
+      apiVersions:
+      - v1beta1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - dynakubes
+    sideEffects: None
+    targetPort: server-port
+    timeoutSeconds: 2
+    type: ValidatingAdmissionWebhook
+    webhookPath: /validate
+  - admissionReviewVersions:
+    - v1beta1
+    - v1
+    containerPort: 443
+    deploymentName: dynatrace-webhook
+    failurePolicy: Ignore
+    generateName: webhook.ns.dynatrace.com
+    reinvocationPolicy: IfNeeded
+    rules:
+    - apiGroups:
+      - ""
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - namespaces
+      scope: Cluster
+    sideEffects: None
+    targetPort: server-port
+    timeoutSeconds: 2
+    type: MutatingAdmissionWebhook
+    webhookPath: /label-ns
+  - admissionReviewVersions:
+    - v1beta1
+    - v1
+    containerPort: 443
+    deploymentName: dynatrace-webhook
+    failurePolicy: Ignore
+    generateName: webhook.pod.dynatrace.com
+    reinvocationPolicy: IfNeeded
+    rules:
+    - apiGroups:
+      - ""
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      resources:
+      - pods
+      scope: Namespaced
+    sideEffects: None
+    targetPort: server-port
+    timeoutSeconds: 2
+    type: MutatingAdmissionWebhook
+    webhookPath: /inject
