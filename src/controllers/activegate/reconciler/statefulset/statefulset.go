@@ -6,6 +6,7 @@ import (
 	dynatracev1beta1 "github.com/Dynatrace/dynatrace-operator/src/api/v1beta1"
 	"github.com/Dynatrace/dynatrace-operator/src/controllers/activegate/customproperties"
 	"github.com/Dynatrace/dynatrace-operator/src/controllers/activegate/internal/events"
+	"github.com/Dynatrace/dynatrace-operator/src/controllers/agproxysecret"
 	"github.com/Dynatrace/dynatrace-operator/src/deploymentmetadata"
 	"github.com/Dynatrace/dynatrace-operator/src/kubeobjects"
 	"github.com/pkg/errors"
@@ -33,6 +34,22 @@ const (
 	ProxySecretKey = "proxy"
 
 	ActivegateContainerName = "activegate"
+
+	ProxySecretMountPath = "/var/lib/dynatrace/secrets/internal-proxy"
+
+	ProxySecretVolumeName = "proxy-secret-volume"
+
+	ProxySecretHost          = "host"
+	ProxySecretHostMountPath = ProxySecretMountPath + "/" + ProxySecretHost
+
+	ProxySecretPort          = "port"
+	ProxySecretPortMountPath = ProxySecretMountPath + "/" + ProxySecretPort
+
+	ProxySecretUsername          = "username"
+	ProxySecretUsernameMountPath = ProxySecretMountPath + "/" + ProxySecretUsername
+
+	ProxySecretPassword          = "password"
+	ProxySecretPasswordMountPath = ProxySecretMountPath + "/" + ProxySecretPassword
 )
 
 type statefulSetProperties struct {
@@ -175,7 +192,24 @@ func buildVolumes(stsProperties *statefulSetProperties) []corev1.Volume {
 
 	volumes = append(volumes, stsProperties.volumes...)
 
+	if !stsProperties.IsProxyNilOrEmpty() {
+		volumes = append(volumes, buildProxyVolumes(stsProperties)...)
+	}
+
 	return volumes
+}
+
+func buildProxyVolumes(stsProperties *statefulSetProperties) []corev1.Volume {
+	return []corev1.Volume{
+		{
+			Name: ProxySecretVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: agproxysecret.BuildProxySecretName(stsProperties.Name),
+				},
+			},
+		},
+	}
 }
 
 func determineCustomPropertiesSource(stsProperties *statefulSetProperties) string {
@@ -199,7 +233,40 @@ func buildVolumeMounts(stsProperties *statefulSetProperties) []corev1.VolumeMoun
 
 	volumeMounts = append(volumeMounts, stsProperties.containerVolumeMounts...)
 
+	if !stsProperties.IsProxyNilOrEmpty() {
+		volumeMounts = append(volumeMounts, buildProxyMounts()...)
+	}
+
 	return volumeMounts
+}
+
+func buildProxyMounts() []corev1.VolumeMount {
+	return []corev1.VolumeMount{
+		{
+			ReadOnly:  true,
+			Name:      ProxySecretVolumeName,
+			MountPath: ProxySecretHostMountPath,
+			SubPath:   ProxySecretHost,
+		},
+		{
+			ReadOnly:  true,
+			Name:      ProxySecretVolumeName,
+			MountPath: ProxySecretPortMountPath,
+			SubPath:   ProxySecretPort,
+		},
+		{
+			ReadOnly:  true,
+			Name:      ProxySecretVolumeName,
+			MountPath: ProxySecretUsernameMountPath,
+			SubPath:   ProxySecretUsername,
+		},
+		{
+			ReadOnly:  true,
+			Name:      ProxySecretVolumeName,
+			MountPath: ProxySecretPasswordMountPath,
+			SubPath:   ProxySecretPassword,
+		},
+	}
 }
 
 func buildEnvs(stsProperties *statefulSetProperties) []corev1.EnvVar {
@@ -213,9 +280,6 @@ func buildEnvs(stsProperties *statefulSetProperties) []corev1.EnvVar {
 	}
 	envs = append(envs, stsProperties.Env...)
 
-	if !isProxyNilOrEmpty(stsProperties.Spec.Proxy) {
-		envs = append(envs, buildProxyEnv(stsProperties.Spec.Proxy))
-	}
 	if stsProperties.Group != "" {
 		envs = append(envs, corev1.EnvVar{Name: DTGroup, Value: stsProperties.Group})
 	}
@@ -226,25 +290,6 @@ func buildEnvs(stsProperties *statefulSetProperties) []corev1.EnvVar {
 	return envs
 }
 
-func buildProxyEnv(proxy *dynatracev1beta1.DynaKubeProxy) corev1.EnvVar {
-	if proxy.ValueFrom != "" {
-		return corev1.EnvVar{
-			Name: DTInternalProxy,
-			ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{Name: proxy.ValueFrom},
-					Key:                  ProxySecretKey,
-				},
-			},
-		}
-	} else {
-		return corev1.EnvVar{
-			Name:  DTInternalProxy,
-			Value: proxy.Value,
-		}
-	}
-}
-
 func determineServiceAccountName(stsProperties *statefulSetProperties) string {
 	return serviceAccountPrefix + stsProperties.serviceAccountOwner
 }
@@ -253,8 +298,4 @@ func isCustomPropertiesNilOrEmpty(customProperties *dynatracev1beta1.DynaKubeVal
 	return customProperties == nil ||
 		(customProperties.Value == "" &&
 			customProperties.ValueFrom == "")
-}
-
-func isProxyNilOrEmpty(proxy *dynatracev1beta1.DynaKubeProxy) bool {
-	return proxy == nil || (proxy.Value == "" && proxy.ValueFrom == "")
 }
