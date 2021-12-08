@@ -18,7 +18,7 @@ With v0.3.0 the CRD structure has been changed to provide an easier and more und
 - added **hostMonitoring** for only monitoring the host in the cluster without app-only injection
 - (PREVIEW) added **cloudNativeFullStack** mode, which combines **hostMonitoring**, with the webhook based **applicationMonitoring**
 
-For more information please have a look at [our DynaKube Custom Resource examples](https://github.com/Dynatrace/dynatrace-operator/tree/master/config/samples),
+For more information please have a look at [our DynaKube Custom Resource examples](https://github.com/Dynatrace/dynatrace-operator/tree/release-0.3/config/samples),
 or our [official help page.](https://www.dynatrace.com/support/help/setup-and-configuration/setup-on-container-platforms/kubernetes/)
 
 
