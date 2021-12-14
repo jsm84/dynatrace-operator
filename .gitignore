@@ -83,3 +83,5 @@ tags
 config/deploy/kustomization.yaml
 
 /.run/
+
+kubeconfig
