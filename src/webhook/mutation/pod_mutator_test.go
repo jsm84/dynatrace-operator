@@ -1281,6 +1281,7 @@ func buildResultPod(_ *testing.T, oneAgentFf FeatureFlag, dataIngestFf FeatureFl
 	if oaEnabled {
 		pod.Spec.InitContainers[0].Env = append(pod.Spec.InitContainers[0].Env,
 			corev1.EnvVar{Name: oneAgentInjectedEnvVarName, Value: "true"},
+			corev1.EnvVar{Name: standalone.InstallerArchEnv, Value: arch.Arch},
 			corev1.EnvVar{Name: standalone.InstallerFlavorEnv, Value: arch.FlavorMultidistro},
 			corev1.EnvVar{Name: standalone.InstallerTechEnv, Value: "all"},
 			corev1.EnvVar{Name: standalone.InstallPathEnv, Value: "/opt/dynatrace/oneagent-paas"},

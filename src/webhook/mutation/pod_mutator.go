@@ -115,6 +115,8 @@ type podMutator struct {
 	apmExists      bool
 	clusterID      string
 	currentPodName string
+	currentPodNS   string
+	dynaKube       dynatracev1beta1.DynaKube
 	recorder       record.EventRecorder
 }
 
@@ -197,9 +199,6 @@ func (m *podMutator) Handle(ctx context.Context, req admission.Request) admissio
 		return *rsp
 	}
 	m.currentPodName = pod.Name
-	defer func() {
-		m.currentPodName = ""
-	}()
 
 	injectionInfo := NewInjectionInfoForPod(pod)
 	if !injectionInfo.anyEnabled() {
@@ -211,26 +210,30 @@ func (m *podMutator) Handle(ctx context.Context, req admission.Request) admissio
 		return *nsResponse
 	}
 
+	m.currentPodNS = ns.Name
+
 	dk, dkResponse := m.getDynakube(ctx, req, dkName)
 	if dkResponse != nil {
 		return *dkResponse
 	}
 
-	if dk.FeatureDisableMetadataEnrichment() {
+	m.dynaKube = dk
+
+	if m.dynaKube.FeatureDisableMetadataEnrichment() {
 		injectionInfo.features[DataIngest] = false
 	}
 
-	if !dk.NeedAppInjection() {
+	if !m.dynaKube.NeedAppInjection() {
 		return emptyPatch
 	}
 
-	secretResponse := m.ensureInitSecret(ctx, ns, dk)
+	secretResponse := m.ensureInitSecret(ctx)
 	if secretResponse != nil {
 		return *secretResponse
 	}
 
 	if injectionInfo.enabled(DataIngest) {
-		err := m.ensureDataIngestSecret(ctx, ns, dkName)
+		err := m.ensureDataIngestSecret(ctx)
 		if err != nil {
 			return silentErrorResponse(m.currentPodName, err)
 		}
@@ -238,7 +241,7 @@ func (m *podMutator) Handle(ctx context.Context, req admission.Request) admissio
 
 	podLog.Info("injecting into Pod", "name", pod.Name, "generatedName", pod.GenerateName, "namespace", req.Namespace)
 
-	response := m.handleAlreadyInjectedPod(pod, dk, injectionInfo, req)
+	response := m.handleAlreadyInjectedPod(pod, injectionInfo, req)
 	if response != nil {
 		return *response
 	}
@@ -252,7 +255,7 @@ func (m *podMutator) Handle(ctx context.Context, req admission.Request) admissio
 
 	flavor, technologies, installPath, installerURL, failurePolicy, image := m.getBasicData(pod)
 
-	dkVol, mode := ensureDynakubeVolume(dk)
+	dkVol, mode := ensureDynakubeVolume(m.dynaKube)
 
 	setupInjectionConfigVolume(pod)
 	setupOneAgentVolumes(injectionInfo, pod, dkVol)
@@ -260,18 +263,18 @@ func (m *podMutator) Handle(ctx context.Context, req admission.Request) admissio
 
 	sc := getSecurityContext(pod)
 	basePodName := getBasePodName(pod)
-	deploymentMetadata := m.getDeploymentMetadata(dk)
+	deploymentMetadata := m.getDeploymentMetadata()
 
-	installContainer := createInstallInitContainerBase(image, pod, failurePolicy, basePodName, sc, dk)
+	installContainer := createInstallInitContainerBase(image, pod, failurePolicy, basePodName, sc, m.dynaKube)
 
 	decorateInstallContainerWithOneAgent(&installContainer, injectionInfo, flavor, technologies, installPath, installerURL, mode)
 	decorateInstallContainerWithDataIngest(&installContainer, injectionInfo, workloadKind, workloadName)
 
-	updateContainers(pod, injectionInfo, &installContainer, dk, deploymentMetadata)
+	m.updateContainers(pod, injectionInfo, &installContainer, deploymentMetadata)
 
 	addToInitContainers(pod, installContainer)
 
-	m.recorder.Eventf(&dk,
+	m.recorder.Eventf(&m.dynaKube,
 		corev1.EventTypeNormal,
 		injectEvent,
 		"Injecting the necessary info into pod %s in namespace %s", basePodName, ns.Name)
@@ -279,10 +282,10 @@ func (m *podMutator) Handle(ctx context.Context, req admission.Request) admissio
 	return getResponseForPod(pod, &req)
 }
 
-func (m *podMutator) handleAlreadyInjectedPod(pod *corev1.Pod, dynaKube dynatracev1beta1.DynaKube, injectionInfo *InjectionInfo, req admission.Request) *admission.Response {
+func (m *podMutator) handleAlreadyInjectedPod(pod *corev1.Pod, injectionInfo *InjectionInfo, req admission.Request) *admission.Response {
 	if isPodInjected(pod) {
-		if !dynaKube.FeatureDisableWebhookReinvocationPolicy() {
-			rsp := m.applyReinvocationPolicy(pod, dynaKube, injectionInfo, req)
+		if !m.dynaKube.FeatureDisableWebhookReinvocationPolicy() {
+			rsp := m.applyReinvocationPolicy(pod, injectionInfo, req)
 			return &rsp
 		}
 		rsp := admission.Patched("")
@@ -299,13 +302,13 @@ func addToInitContainers(pod *corev1.Pod, installContainer corev1.Container) {
 	pod.Spec.InitContainers = append(pod.Spec.InitContainers, installContainer)
 }
 
-func updateContainers(pod *corev1.Pod, injectionInfo *InjectionInfo, ic *corev1.Container, dk dynatracev1beta1.DynaKube, deploymentMetadata *deploymentmetadata.DeploymentMetadata) {
+func (m *podMutator) updateContainers(pod *corev1.Pod, injectionInfo *InjectionInfo, ic *corev1.Container, deploymentMetadata *deploymentmetadata.DeploymentMetadata) {
 	for i := range pod.Spec.Containers {
 		c := &pod.Spec.Containers[i]
 
 		if injectionInfo.enabled(OneAgent) {
 			updateInstallContainerOneAgent(ic, i+1, c.Name, c.Image)
-			updateContainerOneAgent(c, &dk, pod, deploymentMetadata)
+			m.updateContainerOneAgent(c, pod, deploymentMetadata)
 		}
 		if injectionInfo.enabled(DataIngest) {
 			updateContainerDataIngest(c, deploymentMetadata)
@@ -334,6 +337,7 @@ func decorateInstallContainerWithDataIngest(ic *corev1.Container, injectionInfo 
 func decorateInstallContainerWithOneAgent(ic *corev1.Container, injectionInfo *InjectionInfo, flavor string, technologies string, installPath string, installerURL string, mode string) {
 	if injectionInfo.enabled(OneAgent) {
 		ic.Env = append(ic.Env,
+			corev1.EnvVar{Name: standalone.InstallerArchEnv, Value: arch.Arch},
 			corev1.EnvVar{Name: standalone.InstallerFlavorEnv, Value: flavor},
 			corev1.EnvVar{Name: standalone.InstallerTechEnv, Value: technologies},
 			corev1.EnvVar{Name: standalone.InstallPathEnv, Value: installPath},
@@ -377,9 +381,9 @@ func createInstallInitContainerBase(image string, pod *corev1.Pod, failurePolicy
 	return ic
 }
 
-func (m *podMutator) getDeploymentMetadata(dk dynatracev1beta1.DynaKube) *deploymentmetadata.DeploymentMetadata {
+func (m *podMutator) getDeploymentMetadata() *deploymentmetadata.DeploymentMetadata {
 	var deploymentMetadata *deploymentmetadata.DeploymentMetadata
-	if dk.CloudNativeFullstackMode() {
+	if m.dynaKube.CloudNativeFullstackMode() {
 		deploymentMetadata = deploymentmetadata.NewDeploymentMetadata(m.clusterID, daemonset.DeploymentTypeCloudNative)
 	} else {
 		deploymentMetadata = deploymentmetadata.NewDeploymentMetadata(m.clusterID, daemonset.DeploymentTypeApplicationMonitoring)
@@ -468,7 +472,9 @@ func (m *podMutator) getBasicData(pod *corev1.Pod) (
 	failurePolicy string,
 	image string,
 ) {
-	flavor = kubeobjects.GetField(pod.Annotations, dtwebhook.AnnotationFlavor, arch.FlavorMultidistro)
+
+	// arch.Flavor defaults to the platform-specific value
+	flavor = kubeobjects.GetField(pod.Annotations, dtwebhook.AnnotationFlavor, arch.Flavor)
 	technologies = url.QueryEscape(kubeobjects.GetField(pod.Annotations, dtwebhook.AnnotationTechnologies, "all"))
 	installPath = kubeobjects.GetField(pod.Annotations, dtwebhook.AnnotationInstallPath, dtwebhook.DefaultInstallPath)
 	installerURL = kubeobjects.GetField(pod.Annotations, dtwebhook.AnnotationInstallerUrl, "")
@@ -510,7 +516,7 @@ func (m *podMutator) retrieveWorkload(ctx context.Context, req admission.Request
 	return workloadName, workloadKind, nil
 }
 
-func (m *podMutator) applyReinvocationPolicy(pod *corev1.Pod, dk dynatracev1beta1.DynaKube, injectionInfo *InjectionInfo, req admission.Request) admission.Response {
+func (m *podMutator) applyReinvocationPolicy(pod *corev1.Pod, injectionInfo *InjectionInfo, req admission.Request) admission.Response {
 	var needsUpdate = false
 	var installContainer *corev1.Container
 	for i := range pod.Spec.Containers {
@@ -544,7 +550,7 @@ func (m *podMutator) applyReinvocationPolicy(pod *corev1.Pod, dk dynatracev1beta
 
 			deploymentMetadata := deploymentmetadata.NewDeploymentMetadata(m.clusterID, daemonset.DeploymentTypeApplicationMonitoring)
 
-			updateContainerOneAgent(c, &dk, pod, deploymentMetadata)
+			m.updateContainerOneAgent(c, pod, deploymentMetadata)
 
 			if installContainer == nil {
 				for j := range pod.Spec.InitContainers {
@@ -573,7 +579,7 @@ func (m *podMutator) applyReinvocationPolicy(pod *corev1.Pod, dk dynatracev1beta
 
 	if needsUpdate {
 		podLog.Info("updating pod with missing containers")
-		m.recorder.Eventf(&dk,
+		m.recorder.Eventf(&m.dynaKube,
 			corev1.EventTypeNormal,
 			updatePodEvent,
 			"Updating pod %s in namespace %s with missing containers", pod.GenerateName, pod.Namespace)
@@ -586,7 +592,7 @@ func (m *podMutator) getPod(req admission.Request) (*corev1.Pod, *admission.Resp
 	pod := &corev1.Pod{}
 	err := m.decoder.Decode(req, pod)
 	if err != nil {
-		podLog.Error(err, "Failed to decode the request for pod injection")
+		podLog.Error(err, "failed to decode the request for pod injection")
 		rsp := silentErrorResponse(req.Name, err)
 		return nil, &rsp
 	}
@@ -597,7 +603,7 @@ func (m *podMutator) getNsAndDkName(ctx context.Context, req admission.Request) 
 	var rsp admission.Response
 
 	if err := m.client.Get(ctx, client.ObjectKey{Name: req.Namespace}, &ns); err != nil {
-		podLog.Error(err, "Failed to query the namespace before pod injection")
+		podLog.Error(err, "failed to query the namespace before pod injection")
 		rsp = silentErrorResponse(m.currentPodName, err)
 		return corev1.Namespace{}, "", &rsp
 	}
@@ -614,12 +620,12 @@ func (m *podMutator) getNsAndDkName(ctx context.Context, req admission.Request) 
 	return ns, dkName, nil
 }
 
-func (m *podMutator) ensureDataIngestSecret(ctx context.Context, ns corev1.Namespace, dkName string) error {
+func (m *podMutator) ensureDataIngestSecret(ctx context.Context) error {
 	endpointGenerator := dtingestendpoint.NewEndpointSecretGenerator(m.client, m.apiReader, m.namespace)
 
 	var endpointSecret corev1.Secret
-	if err := m.apiReader.Get(ctx, client.ObjectKey{Name: dtingestendpoint.SecretEndpointName, Namespace: ns.Name}, &endpointSecret); k8serrors.IsNotFound(err) {
-		if err = endpointGenerator.GenerateForNamespace(ctx, dkName, ns.Name); err != nil {
+	if err := m.apiReader.Get(ctx, client.ObjectKey{Name: dtingestendpoint.SecretEndpointName, Namespace: m.currentPodNS}, &endpointSecret); k8serrors.IsNotFound(err) {
+		if err := endpointGenerator.GenerateForNamespace(ctx, m.dynaKube.Name, m.currentPodNS); err != nil {
 			podLog.Error(err, "failed to create the data-ingest endpoint secret before pod injection")
 			return err
 		}
@@ -651,13 +657,13 @@ func (m *podMutator) getDynakube(ctx context.Context, req admission.Request, dkN
 	return dk, nil
 }
 
-func (m *podMutator) ensureInitSecret(ctx context.Context, ns corev1.Namespace, dk dynatracev1beta1.DynaKube) *admission.Response {
+func (m *podMutator) ensureInitSecret(ctx context.Context) *admission.Response {
 	var initSecret corev1.Secret
 	var rsp admission.Response
 
-	if err := m.apiReader.Get(ctx, client.ObjectKey{Name: dtwebhook.SecretConfigName, Namespace: ns.Name}, &initSecret); k8serrors.IsNotFound(err) {
-		if err = initgeneration.NewInitGenerator(m.client, m.apiReader, m.namespace).GenerateForNamespace(ctx, dk, ns.Name); err != nil {
-			podLog.Error(err, "Failed to create the init secret before pod injection")
+	if err := m.apiReader.Get(ctx, client.ObjectKey{Name: dtwebhook.SecretConfigName, Namespace: m.currentPodNS}, &initSecret); k8serrors.IsNotFound(err) {
+		if err := initgeneration.NewInitGenerator(m.client, m.apiReader, m.namespace).GenerateForNamespace(ctx, m.dynaKube, m.currentPodNS); err != nil {
+			podLog.Error(err, "failed to create the init secret before pod injection")
 			rsp = silentErrorResponse(m.currentPodName, err)
 			return &rsp
 		}
@@ -690,7 +696,7 @@ func updateInstallContainerOneAgent(ic *corev1.Container, number int, name strin
 }
 
 // updateContainerOA sets missing preload Variables
-func updateContainerOneAgent(container *corev1.Container, dynakube *dynatracev1beta1.DynaKube, pod *corev1.Pod, deploymentMetadata *deploymentmetadata.DeploymentMetadata) {
+func (m *podMutator) updateContainerOneAgent(container *corev1.Container, pod *corev1.Pod, deploymentMetadata *deploymentmetadata.DeploymentMetadata) {
 
 	podLog.Info("updating container with missing preload variables", "containerName", container.Name)
 	installPath := kubeobjects.GetField(pod.Annotations, dtwebhook.AnnotationInstallPath, dtwebhook.DefaultInstallPath)
@@ -713,7 +719,7 @@ func updateContainerOneAgent(container *corev1.Container, dynakube *dynatracev1b
 			SubPath:   fmt.Sprintf(standalone.ContainerConfFilenameTemplate, container.Name),
 		})
 
-	if dynakube.FeatureAgentInitialConnectRetry() > 0 {
+	if m.dynaKube.FeatureAgentInitialConnectRetry() > 0 {
 		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
 			Name:      oneAgentShareVolumeName,
 			MountPath: "/var/lib/dynatrace/oneagent/agent/customkeys/curl_options.conf",
@@ -721,7 +727,7 @@ func updateContainerOneAgent(container *corev1.Container, dynakube *dynatracev1b
 		})
 	}
 
-	if dynakube.HasActiveGateCaCert() {
+	if m.dynaKube.HasActiveGateCaCert() {
 		container.VolumeMounts = append(container.VolumeMounts,
 			corev1.VolumeMount{
 				Name:      oneAgentShareVolumeName,
@@ -736,23 +742,21 @@ func updateContainerOneAgent(container *corev1.Container, dynakube *dynatracev1b
 			Value: installPath + "/agent/lib64/liboneagentproc.so",
 		})
 
-	if dynakube.Spec.Proxy != nil && (dynakube.Spec.Proxy.Value != "" || dynakube.Spec.Proxy.ValueFrom != "") {
-		container.Env = append(container.Env,
-			corev1.EnvVar{
-				Name: "DT_PROXY",
-				ValueFrom: &corev1.EnvVarSource{
-					SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: dtwebhook.SecretConfigName,
-						},
-						Key: "proxy",
-					},
-				},
-			})
+	if m.dynaKube.Spec.Proxy != nil && (m.dynaKube.Spec.Proxy.Value != "" || m.dynaKube.Spec.Proxy.ValueFrom != "") {
+		secretConfig, err := m.getSecretConfigData()
+		if err != nil {
+			podLog.Error(err, "failed to inject proxy info into pod", "name", pod.Name, "generatedName", pod.GenerateName)
+		} else {
+			container.Env = append(container.Env,
+				corev1.EnvVar{
+					Name:  "DT_PROXY",
+					Value: secretConfig.Proxy,
+				})
+		}
 	}
 
-	if dynakube.Spec.NetworkZone != "" {
-		container.Env = append(container.Env, corev1.EnvVar{Name: "DT_NETWORK_ZONE", Value: dynakube.Spec.NetworkZone})
+	if m.dynaKube.Spec.NetworkZone != "" {
+		container.Env = append(container.Env, corev1.EnvVar{Name: "DT_NETWORK_ZONE", Value: m.dynaKube.Spec.NetworkZone})
 	}
 
 }
@@ -803,4 +807,25 @@ func silentErrorResponse(podName string, err error) admission.Response {
 	rsp := admission.Patched("")
 	rsp.Result.Message = fmt.Sprintf("Failed to inject into pod: %s because %s", podName, err.Error())
 	return rsp
+}
+
+// getSecretConfigData fetches the SecretConfig (initSecret.Config) from the pod namespace
+func (m *podMutator) getSecretConfigData() (*standalone.SecretConfig, error) {
+	var configSecret corev1.Secret
+	err := m.apiReader.Get(context.TODO(), client.ObjectKey{Name: dtwebhook.SecretConfigName, Namespace: m.currentPodNS}, &configSecret)
+	if err != nil {
+		podLog.Error(err, "failed to fetch config secret", "name", dtwebhook.SecretConfigName, "namespace", m.currentPodNS)
+		return nil, err
+	}
+
+	secretData := []byte(configSecret.Data[standalone.SecretConfigFieldName])
+
+	var config standalone.SecretConfig
+	err = json.Unmarshal(secretData, &config)
+	if err != nil {
+		podLog.Error(err, "failed to unmarshal secret", "FieldName", standalone.SecretConfigFieldName, "SecretName", dtwebhook.SecretConfigName)
+		return nil, err
+	}
+
+	return &config, err
 }
