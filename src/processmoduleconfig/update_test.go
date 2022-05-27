@@ -17,6 +17,7 @@ const (
 [general]
 key value
 `
+	emptyRuxitConf = ``
 )
 
 var testProcessModuleConfig = dtclient.ProcessModuleConfig{
@@ -58,10 +59,25 @@ func TestCheckProcessModuleConfigCopy(t *testing.T) {
 	assertTestConf(t, memFs, sourcePath, testRuxitConf)
 }
 
+func TestCheckProcessModuleConfigCopyIfNotExist(t *testing.T) {
+	memFs := afero.NewMemMapFs()
+	prepEmptyConfFs(memFs)
+	sourcePath := sourceRuxitAgentProcPath
+	destPath := ruxitAgentProcPath
+
+	err := checkProcessModuleConfigCopy(memFs, sourcePath, destPath)
+	require.NoError(t, err)
+	assertTestConf(t, memFs, sourcePath, emptyRuxitConf)
+}
+
 func prepTestConfFs(fs afero.Fs) {
 	_ = fs.MkdirAll(filepath.Base(sourceRuxitAgentProcPath), 0755)
 	usedConf, _ := fs.OpenFile(ruxitAgentProcPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	_, _ = usedConf.WriteString(testRuxitConf)
+}
+
+func prepEmptyConfFs(fs afero.Fs) {
+	_ = fs.MkdirAll(filepath.Base(sourceRuxitAgentProcPath), 0755)
 }
 
 func assertTestConf(t *testing.T, fs afero.Fs, path, expected string) {
