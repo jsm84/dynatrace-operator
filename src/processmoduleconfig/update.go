@@ -50,6 +50,17 @@ func CreateAgentConfigDir(fs afero.Fs, targetDir, sourceDir string, processModul
 // so it`s easier to update
 func checkProcessModuleConfigCopy(fs afero.Fs, sourcePath, destPath string) error {
 	if _, err := fs.Open(sourcePath); os.IsNotExist(err) {
+		usedProcessModuleConfigFile, err := fs.Open(destPath)
+		if os.IsNotExist(err) {
+			log.Info("original ruxitagentproc.conf not found")
+			err = nil
+			usedProcessModuleConfigFile, err = createProcessModuleConfigFile(fs, destPath)
+		}
+		// catch any leftover error from fs.Open or file creation above
+		if err != nil {
+			return err
+		}
+
 		log.Info("saving original ruxitagentproc.conf to _ruxitagentproc.conf")
 		fileInfo, err := fs.Stat(destPath)
 		if err != nil {
@@ -57,11 +68,6 @@ func checkProcessModuleConfigCopy(fs afero.Fs, sourcePath, destPath string) erro
 		}
 
 		sourceProcessModuleConfigFile, err := fs.OpenFile(sourcePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, fileInfo.Mode())
-		if err != nil {
-			return err
-		}
-
-		usedProcessModuleConfigFile, err := fs.Open(destPath)
 		if err != nil {
 			return err
 		}
@@ -82,4 +88,17 @@ func checkProcessModuleConfigCopy(fs afero.Fs, sourcePath, destPath string) erro
 		return usedProcessModuleConfigFile.Close()
 	}
 	return nil
+}
+
+// createProcessModuleConfigFile simply creates an empty file at location `destPath`.
+// This is to fix a bug with the oneagent zip download for S390 where ruxitagentproc.conf if missing from the archive.
+// The file should get populated by the existing backup, compare & merge against JSON config data obtained from the live environment.
+func createProcessModuleConfigFile(fs afero.Fs, destPath string) (afero.File, error) {
+	log.Info("generating new ruxitagentproc.conf file")
+	newProcessModuleConfigFile, err := fs.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return nil, err
+	}
+
+	return newProcessModuleConfigFile, err
 }
