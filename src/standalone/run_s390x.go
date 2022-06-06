@@ -1,5 +1,5 @@
-//go:build !s390x
-//+build !s390x
+//go:build s390x
+//+build s390x
 
 package standalone
 
@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/Dynatrace/dynatrace-operator/src/arch"
 	"github.com/Dynatrace/dynatrace-operator/src/dtclient"
 	"github.com/Dynatrace/dynatrace-operator/src/installer"
 	"github.com/Dynatrace/dynatrace-operator/src/installer/url"
@@ -26,39 +25,31 @@ type Runner struct {
 
 func NewRunner(fs afero.Fs) (*Runner, error) {
 	log.Info("creating standalone runner")
+	config, err := newSecretConfigViaFs(fs)
+	if err != nil {
+		return nil, err
+	}
 	env, err := newEnv()
 	if err != nil {
 		return nil, err
 	}
-
-	var config *SecretConfig
-	var client dtclient.Client
-	var oneAgentInstaller *url.UrlInstaller
-	if env.OneAgentInjected {
-		config, err = newSecretConfigViaFs(fs)
-		if err != nil {
-			return nil, err
-		}
-
-		client, err = newDTClientBuilder(config).createClient()
-		if err != nil {
-			return nil, err
-		}
-
-		oneAgentInstaller = url.NewUrlInstaller(
-			fs,
-			client,
-			&url.Properties{
-				Os:            dtclient.OsUnix,
-				Type:          dtclient.InstallerTypePaaS,
-				Flavor:        env.InstallerFlavor,
-				Arch:          arch.Arch,
-				Technologies:  env.InstallerTech,
-				TargetVersion: url.VersionLatest,
-				Url:           env.InstallerUrl,
-			},
-		)
+	client, err := newDTClientBuilder(config).createClient()
+	if err != nil {
+		return nil, err
 	}
+	oneAgentInstaller := url.NewUrlInstaller(
+		fs,
+		client,
+		&url.Properties{
+			Os:           dtclient.OsUnix,
+			Type:         dtclient.InstallerTypePaaS,
+			Flavor:       env.InstallerFlavor,
+			Arch:         env.InstallerArch,
+			Technologies: env.InstallerTech,
+			Version:      url.VersionLatest,
+			Url:          env.InstallerUrl,
+		},
+	)
 	log.Info("standalone runner created successfully")
 	return &Runner{
 		fs:        fs,
@@ -73,17 +64,15 @@ func (runner *Runner) Run() (resultedError error) {
 	log.Info("standalone agent init started")
 	defer runner.consumeErrorIfNecessary(&resultedError)
 
-	if runner.env.OneAgentInjected {
-		if err := runner.setHostTenant(); err != nil {
+	if err := runner.setHostTenant(); err != nil {
+		return err
+	}
+
+	if runner.env.Mode == InstallerMode && runner.env.OneAgentInjected {
+		if err := runner.installOneAgent(); err != nil {
 			return err
 		}
-
-		if runner.env.Mode == InstallerMode {
-			if err := runner.installOneAgent(); err != nil {
-				return err
-			}
-			log.Info("OneAgent download finished")
-		}
+		log.Info("OneAgent download finished")
 	}
 
 	err := runner.configureInstallation()
@@ -114,9 +103,13 @@ func (runner *Runner) setHostTenant() error {
 	return nil
 }
 
+// installOneAgent() must create the missing ruxitagentproc.conf on the s390x platform.
+// We must therefore inject the Agent ConnectionInfo into the general section of the config instance,
+// which will get merged into the config file after the first Update().
+// This is a temporary workaround until ruxitagentproc.conf gets restored to the zip installer for s390.
 func (runner *Runner) installOneAgent() error {
 	log.Info("downloading OneAgent")
-	_, err := runner.installer.InstallAgent(BinDirMount)
+	err := runner.installer.InstallAgent(BinDirMount)
 	if err != nil {
 		return err
 	}
@@ -124,6 +117,11 @@ func (runner *Runner) installOneAgent() error {
 	if err != nil {
 		return err
 	}
+	connectionInfo, err := runner.dtclient.GetConnectionInfo()
+	if err != nil {
+		return err
+	}
+	processModuleConfig.AddConnectionInfo(connectionInfo)
 	if err := runner.installer.UpdateProcessModuleConfig(BinDirMount, processModuleConfig); err != nil {
 		return err
 	}

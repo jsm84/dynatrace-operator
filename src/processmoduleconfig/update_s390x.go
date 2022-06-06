@@ -1,15 +1,15 @@
-//go:build !s390x
-//+build !s390x
+//go:build s390x
+//+build s390x
 
 package processmoduleconfig
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
 	"github.com/Dynatrace/dynatrace-operator/src/dtclient"
-	"github.com/pkg/errors"
 	"github.com/spf13/afero"
 )
 
@@ -18,7 +18,7 @@ var (
 	sourceRuxitAgentProcPath = filepath.Join("agent", "conf", "_ruxitagentproc.conf")
 )
 
-func UpdateProcessModuleConfigInPlace(fs afero.Fs, targetDir string, processModuleConfig *dtclient.ProcessModuleConfig) error {
+func UpdateProcessModuleConfig(fs afero.Fs, targetDir string, processModuleConfig *dtclient.ProcessModuleConfig) error {
 	if processModuleConfig != nil {
 		log.Info("updating ruxitagentproc.conf", "targetDir", targetDir)
 		usedProcessModuleConfigPath := filepath.Join(targetDir, ruxitAgentProcPath)
@@ -27,22 +27,6 @@ func UpdateProcessModuleConfigInPlace(fs afero.Fs, targetDir string, processModu
 			return err
 		}
 		return Update(fs, sourceProcessModuleConfigPath, usedProcessModuleConfigPath, processModuleConfig.ToMap())
-	}
-	log.Info("no changes to ruxitagentproc.conf, skipping update")
-	return nil
-}
-
-func CreateAgentConfigDir(fs afero.Fs, targetDir, sourceDir string, processModuleConfig *dtclient.ProcessModuleConfig) error {
-	if processModuleConfig != nil {
-		log.Info("updating ruxitagentproc.conf", "targetDir", targetDir, "sourceDir", sourceDir)
-		sourceProcessModuleConfigPath := filepath.Join(sourceDir, ruxitAgentProcPath)
-		destinationProcessModuleConfigPath := filepath.Join(targetDir, ruxitAgentProcPath)
-		err := fs.MkdirAll(filepath.Dir(destinationProcessModuleConfigPath), 0755)
-		if err != nil {
-			log.Info("failed to create directory for destination process module config", "path", filepath.Dir(destinationProcessModuleConfigPath))
-			return errors.WithStack(err)
-		}
-		return Update(fs, sourceProcessModuleConfigPath, destinationProcessModuleConfigPath, processModuleConfig.ToMap())
 	}
 	log.Info("no changes to ruxitagentproc.conf, skipping update")
 	return nil
@@ -94,10 +78,9 @@ func checkProcessModuleConfigCopy(fs afero.Fs, sourcePath, destPath string) erro
 	return nil
 }
 
-// createProcessModuleConfigFile simply creates an empty file at location `destPath`.
-// The file should get populated by the existing backup, compare & merge against JSON config data obtained from the live environment.
-// This was originally implemented to fix a bug with the oneagent zip download for s390 where ruxitagentproc.conf is missing.
-// It is retained for unit test compatibility between x86/arm/ppc64le and s390x.
+// createProcessModuleConfigFile creates an empty file at location `destPath` and calls
+// populateProcessModuleConfigFile() to populate the config file for the s390x architecture.
+// This is to fix a bug with the oneagent zip download for s390x where ruxitagentproc.conf is missing from the archive.
 func createProcessModuleConfigFile(fs afero.Fs, destPath string) error {
 	log.Info("generating new ruxitagentproc.conf file")
 	newProcessModuleConfigFile, err := fs.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
@@ -105,5 +88,54 @@ func createProcessModuleConfigFile(fs afero.Fs, destPath string) error {
 		return err
 	}
 
+	err = populateProcessModuleConfigFile(newProcessModuleConfigFile, destPath)
+	if err != nil {
+		return err
+	}
+
 	return newProcessModuleConfigFile.Close()
+}
+
+// populateProcessModuleConfigFile populates the empty config file on s390x
+func populateProcessModuleConfigFile(cfg afero.File, destPath string) error {
+	cfgStat, err := cfg.Stat()
+	if err != nil {
+		log.Error(err, "failed to fetch file info", "filePath", destPath)
+		return err
+	}
+
+	if cfgStat.Size() > 0 {
+		err := fmt.Errorf("cannot write to non-empty file")
+		log.Error(err, "error writing to config file", "filePath", destPath)
+		return err
+	}
+
+	log.Info("writing configuration data to file", "filePath", destPath)
+	for hdr, content := range sections {
+		err := writeFile(cfg, hdr, content)
+		if err != nil {
+			log.Error(err, "error writing to config file", "filePath", destPath, "section", hdr)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func writeFile(cfg afero.File, header string, contents map[string]string) error {
+	_, err := fmt.Fprintf(cfg, "[%s]\n", header)
+	if err != nil {
+		return err
+	}
+
+	for k, v := range contents {
+		_, err = fmt.Fprintf(cfg, "%s %s\n", k, v)
+		if err != nil {
+			return err
+		}
+	}
+
+	_, err = fmt.Fprintf(cfg, "\n")
+
+	return err
 }
