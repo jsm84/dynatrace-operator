@@ -1,5 +1,5 @@
-//go:build !s390x
-//+build !s390x
+//go:build s390x
+//+build s390x
 
 package standalone
 
@@ -103,6 +103,10 @@ func (runner *Runner) setHostTenant() error {
 	return nil
 }
 
+// installOneAgent() must create the missing ruxitagentproc.conf on the s390x platform.
+// We must therefore inject the Agent ConnectionInfo into the general section of the config instance,
+// which will get merged into the config file after the first Update().
+// This is a temporary workaround until ruxitagentproc.conf gets restored to the zip installer for s390.
 func (runner *Runner) installOneAgent() error {
 	log.Info("downloading OneAgent")
 	err := runner.installer.InstallAgent(BinDirMount)
@@ -113,6 +117,11 @@ func (runner *Runner) installOneAgent() error {
 	if err != nil {
 		return err
 	}
+	connectionInfo, err := runner.dtclient.GetConnectionInfo()
+	if err != nil {
+		return err
+	}
+	processModuleConfig.AddConnectionInfo(connectionInfo)
 	if err := runner.installer.UpdateProcessModuleConfig(BinDirMount, processModuleConfig); err != nil {
 		return err
 	}
