@@ -1524,6 +1524,7 @@ func TestHandleAlreadyInjectedPod(t *testing.T) {
 func testReinvocationEnabledAndDefault(t *testing.T) {
 	mutator := podMutator{
 		recorder: record.NewFakeRecorder(1024),
+		dynaKube: dynatracev1beta1.DynaKube{},
 	}
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1534,7 +1535,6 @@ func testReinvocationEnabledAndDefault(t *testing.T) {
 			Containers:     []corev1.Container{{Name: "test-container"}},
 		},
 	}
-	dynakube := dynatracev1beta1.DynaKube{}
 	injectionInfo := &InjectionInfo{features: map[FeatureType]bool{OneAgent: true}}
 	marshaledPod, _ := json.Marshal(pod)
 	req := admission.Request{
@@ -1546,7 +1546,7 @@ func testReinvocationEnabledAndDefault(t *testing.T) {
 		},
 	}
 
-	response := mutator.handleAlreadyInjectedPod(pod, dynakube, injectionInfo, req)
+	response := mutator.handleAlreadyInjectedPod(pod, injectionInfo, req)
 
 	assert.NotNil(t, response)
 	assert.True(t, response.Allowed)
@@ -1563,22 +1563,23 @@ func testReinvocationEnabledAndDefault(t *testing.T) {
 }
 
 func testReinvocationDisabled(t *testing.T) {
-	mutator := podMutator{}
+	mutator := podMutator{
+		dynaKube: dynatracev1beta1.DynaKube{
+			ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{
+					dynatracev1beta1.AnnotationFeatureDisableWebhookReinvocationPolicy: "true",
+				},
+			},
+		},
+	}
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Annotations: map[string]string{dtwebhook.AnnotationDynatraceInjected: "true"},
 		},
 	}
-	dynakube := dynatracev1beta1.DynaKube{
-		ObjectMeta: metav1.ObjectMeta{
-			Annotations: map[string]string{
-				dynatracev1beta1.AnnotationFeatureDisableWebhookReinvocationPolicy: "true",
-			},
-		},
-	}
 	injectionInfo := &InjectionInfo{features: map[FeatureType]bool{OneAgent: true}}
 	req := admission.Request{}
-	response := mutator.handleAlreadyInjectedPod(pod, dynakube, injectionInfo, req)
+	response := mutator.handleAlreadyInjectedPod(pod, injectionInfo, req)
 
 	assert.NotNil(t, response)
 	assert.Empty(t, response.Patches)
@@ -1614,7 +1615,9 @@ func buildTestSecrets() client.Client {
 
 func TestUpdateContainerOneAgent(t *testing.T) {
 	container := &corev1.Container{}
-	dynakube := &dynatracev1beta1.DynaKube{}
+	mutator := podMutator{
+		dynaKube: dynatracev1beta1.DynaKube{},
+	}
 	pod := &corev1.Pod{}
 	metadata := &deploymentmetadata.DeploymentMetadata{}
 	curlOptionsVolumeMount := corev1.VolumeMount{
@@ -1623,16 +1626,21 @@ func TestUpdateContainerOneAgent(t *testing.T) {
 		SubPath:   "curl_options.conf",
 	}
 
-	updateContainerOneAgent(container, dynakube, pod, metadata)
+	mutator.updateContainerOneAgent(container, pod, metadata)
 
 	assert.NotContains(t, container.VolumeMounts, curlOptionsVolumeMount)
 
 	container = &corev1.Container{}
-	dynakube.Annotations = map[string]string{
-		dynatracev1beta1.AnnotationFeatureOneAgentInitialConnectRetry: "30",
+	mutator = podMutator{
+		dynaKube: dynatracev1beta1.DynaKube{
+			ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{
+					dynatracev1beta1.AnnotationFeatureOneAgentInitialConnectRetry: "30",
+				},
+			},
+		},
 	}
-
-	updateContainerOneAgent(container, dynakube, pod, metadata)
+	mutator.updateContainerOneAgent(container, pod, metadata)
 
 	assert.Contains(t, container.VolumeMounts, curlOptionsVolumeMount)
 
