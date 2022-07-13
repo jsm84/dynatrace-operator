@@ -14,7 +14,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.0
 	github.com/prometheus/client_model v0.2.0
-	github.com/spf13/afero v1.8.0
+	github.com/spf13/afero v1.8.2
 	github.com/spf13/cobra v1.3.0
 	github.com/stretchr/testify v1.8.0
 	go.uber.org/zap v1.20.0
@@ -31,7 +31,6 @@ require (
 )
 
 require (
-	cloud.google.com/go v0.99.0 // indirect
 	github.com/BurntSushi/toml v1.0.0 // indirect
 	github.com/Microsoft/go-winio v0.5.1 // indirect
 	github.com/Microsoft/hcsshim v0.9.2 // indirect
