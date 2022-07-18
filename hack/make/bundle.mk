@@ -15,7 +15,7 @@ endif
 
 .PHONY: bundle
 ## Generates bundle manifests and metadata, then validates generated files
-bundle: prerequisites/kustomize manifests/kubernetes
+bundle: prerequisites/kustomize manifests/$(PLATFORM)
 	./hack/build/bundle.sh "$(PLATFORM)" "$(VERSION)" "$(BUNDLE_CHANNELS)" "$(BUNDLE_DEFAULT_CHANNEL)"
 
 bundle/kubernetes: OLM=true
